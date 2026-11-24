@@ -28,8 +28,18 @@ public:
     //   Se use_stamped_ for true, crie pub_stamped_ (geometry_msgs::msg::TwistStamped);
     //   senão, crie pub_ (geometry_msgs::msg::Twist). Fila de 10 mensagens.
 
+    if(use_stamped_){
+    	pub_stamped_ = create_publisher<geometry_msgs::msg::TwistStamped>("cmd_vel", 10);
+    	} 
+    	else{
+    		pub_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel",10);	
+    	}
+
     // TODO 2: assinar "scan" (sensor_msgs::msg::LaserScan) com QoS de sensor,
     //   rclcpp::SensorDataQoS(), chamando on_scan(*msg) no callback (use uma lambda).
+    sub_ = create_subscription<sensor_msgs::msg::LaserScan> ("scan", rclcpp::SensorDataQoS(),[this](const sensor_msgs::msg::LaserScan::SharedPtr msg){
+    	on_scan(*msg);
+    });
   }
 
 private:
@@ -42,13 +52,30 @@ private:
     //   - ângulo do raio i: scan.angle_min + i * scan.angle_increment
     //   - o lidar do TurtleBot3 vai de 0 a 2*pi: normalize com atan2(sin(a), cos(a))
     //   - leitura válida: std::isfinite(r) e range_min <= r <= range_max
-    (void)half_cone;  // remova estas duas linhas quando usar half_cone e scan
-    (void)scan;
+	for (size_t i = 0; i < scan.ranges.size(); i++){
+		const double raw_angle = scan.angle_min + static_cast<double>(i) * scan.angle_increment;
+		const double angle = std::atan2(std::sin(raw_angle), std::cos(raw_angle));
+
+		if (std::abs(angle) <= half_cone){
+			const float r = scan.ranges[i];
+			if (std::isfinite(r) && r >= scan.range_min && r <= scan.range_max){
+				min_dist = std::min(min_dist, r);
+			}
+		}
+	}
 
     geometry_msgs::msg::Twist cmd;
+    
     // TODO 4: se min_dist < safe_distance_, girar no lugar (cmd.angular.z);
     //   senão, andar para frente (cmd.linear.x).
     (void)min_dist;   // remova esta linha quando usar min_dist
+
+    if (min_dist < safe_distance_){
+    	cmd.angular.z = turn_speed_;
+    }
+    	else {
+    		cmd.linear.x = max_speed_;
+    	}
 
     publish(cmd);
   }
